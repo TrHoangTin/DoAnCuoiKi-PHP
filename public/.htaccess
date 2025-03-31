@@ -1,49 +1,6 @@
-<IfModule mod_rewrite.c>
-    RewriteEngine On
-    
-    # Redirect to public folder if not already there
-    RewriteCond %{REQUEST_URI} !^/webbanhang/public/
-    RewriteRule ^(.*)$ public/$1 [L]
-</IfModule>
+RewriteEngine On
+RewriteBase /webbanhang/public/
 
-<IfModule mod_rewrite.c>
-    Options -MultiViews
-    RewriteEngine On
-    
-    # Redirect Trailing Slashes If Not A Folder...
-    RewriteCond %{REQUEST_FILENAME} !-d
-    RewriteRule ^(.*)/$ /$1 [L,R=301]
-    
-    # Handle Front Controller...
-    RewriteCond %{REQUEST_FILENAME} !-d
-    RewriteCond %{REQUEST_FILENAME} !-f
-    RewriteRule ^ index.php [L]
-    
-    # Handle Authorization Header
-    RewriteCond %{HTTP:Authorization} .
-    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
-</IfModule>
-
-# Security Headers
-<IfModule mod_headers.c>
-    Header set X-XSS-Protection "1; mode=block"
-    Header always append X-Frame-Options SAMEORIGIN
-    Header set X-Content-Type-Options nosniff
-    Header set Referrer-Policy "strict-origin-when-cross-origin"
-    Header set Content-Security-Policy "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; img-src 'self' data:; font-src 'self' https://cdnjs.cloudflare.com;"
-</IfModule>
-
-# Disable directory browsing
-Options -Indexes
-
-# Prevent access to sensitive files
-<FilesMatch "\.(env|log|htaccess|htpasswd|ini|phps|fla|psd|log|sh|sqlite|db)$">
-    Order allow,deny
-    Deny from all
-</FilesMatch>
-
-# Prevent access to composer files
-<FilesMatch "(composer\.json|composer\.lock)">
-    Order allow,deny
-    Deny from all
-</FilesMatch>
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteRule ^(.*)$ index.php?url=$1 [QSA,L]

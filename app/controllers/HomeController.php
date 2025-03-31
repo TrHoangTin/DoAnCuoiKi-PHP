@@ -1,15 +1,24 @@
 <?php
+require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../models/ProductModel.php';
+require_once __DIR__ . '/../models/CategoryModel.php';
+
 class HomeController {
+    private $productModel;
+    private $categoryModel;
+
     public function __construct() {
-        echo "<h1>HomeController hoạt động!</h1>";
-        
-        // Hoặc test phương thức
-        $this->index();
+        $db = (new Database())->getConnection();
+        $this->productModel = new ProductModel($db);
+        $this->categoryModel = new CategoryModel($db);
     }
 
     public function index() {
-        echo "<p>Đây là trang chủ</p>";
-        // Hoặc include view
-        // include __DIR__.'/../views/home.php';
+        $featuredProducts = $this->productModel->getFeaturedProducts(8);
+        $newProducts = $this->productModel->getNewProducts(6);
+        $categories = $this->categoryModel->getCategoriesWithCount();
+        
+        $viewPath = __DIR__ . '/../views/home/index.php';
+        require_once $viewPath;
     }
 }

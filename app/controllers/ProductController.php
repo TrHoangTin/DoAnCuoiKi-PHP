@@ -1,187 +1,152 @@
 <?php
-require_once('app/config/database.php');
-require_once('app/models/ProductModel.php');
-require_once('app/models/CategoryModel.php');
+require_once __DIR__ . '/../models/ProductModel.php';
+require_once __DIR__ . '/../models/CategoryModel.php';
+require_once __DIR__ . '/../helpers/SessionHelper.php';
 
 class ProductController {
     private $productModel;
     private $categoryModel;
-    private $db;
 
     public function __construct() {
-        $this->db = (new Database())->getConnection();
-        $this->productModel = new ProductModel($this->db);
-        $this->categoryModel = new CategoryModel($this->db);
+        $db = (new Database())->getConnection();
+        $this->productModel = new ProductModel($db);
+        $this->categoryModel = new CategoryModel($db);
     }
 
     public function index() {
-        try {
-            $products = $this->productModel->getProducts();
-            include 'app/views/product/list.php';
-        } catch(Exception $e) {
-            $this->handleError("Error loading product list: " . $e->getMessage());
-        }
+        $products = $this->productModel->getProducts();
+        require_once __DIR__ . '/../../app/views/product/list.php';
+
     }
 
     public function show($id) {
-        try {
-            $product = $this->productModel->getProductById($id);
-            if ($product) {
-                include 'app/views/product/show.php';
-            } else {
-                $this->redirectWithError('/webbanhang/Product', 'Product not found');
-            }
-        } catch(Exception $e) {
-            $this->handleError("Error showing product: " . $e->getMessage());
+        $product = $this->productModel->getProductById($id);
+        if (!$product) {
+            SessionHelper::setFlash('error_message', 'Sản phẩm không tồn tại');
+            header('Location: /webbanhang/product');
+            exit();
         }
+        require_once __DIR__ . '/../app/views/product/show.php';
     }
 
     public function add() {
-        try {
-            $categories = $this->categoryModel->getCategories();
-            include 'app/views/product/add.php';
-        } catch(Exception $e) {
-            $this->handleError("Error loading add product form: " . $e->getMessage());
+        if (!SessionHelper::isAdmin()) {
+            SessionHelper::setFlash('error_message', 'Bạn không có quyền truy cập');
+            header('Location: /webbanhang/');
+            exit();
         }
-    }
 
-    public function save() {
-        if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-            try {
-                $name = $_POST['name'] ?? '';
-                $description = $_POST['description'] ?? '';
-                $price = $_POST['price'] ?? '';
-                $category_id = $_POST['category_id'] ?? null;
-                
-                $image = $this->handleImageUpload();
+        $categories = $this->categoryModel->getCategories();
 
-                $result = $this->productModel->addProduct($name, $description, $price, $category_id, $image);
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            $data = [
+                'name' => $_POST['name'] ?? '',
+                'description' => $_POST['description'] ?? '',
+                'price' => $_POST['price'] ?? 0,
+                'category_id' => $_POST['category_id'] ?? null,
+                'image' => $this->handleImageUpload()
+            ];
 
-                if (is_array($result)) {
-                    $categories = $this->categoryModel->getCategories();
-                    $errors = $result;
-                    include 'app/views/product/add.php';
-                } elseif ($result) {
-                    $this->redirectWithSuccess('/webbanhang/Product', 'Product added successfully');
-                } else {
-                    $this->redirectWithError('/webbanhang/Product/add', 'Failed to add product');
-                }
-            } catch(Exception $e) {
-                $this->redirectWithError('/webbanhang/Product/add', 'Error: ' . $e->getMessage());
+            $result = $this->productModel->addProduct($data);
+
+            if ($result) {
+                SessionHelper::setFlash('success_message', 'Thêm sản phẩm thành công');
+                header('Location: /webbanhang/product');
+                exit();
+            } else {
+                SessionHelper::setFlash('error_message', 'Thêm sản phẩm không thành công');
             }
-        } else {
-            $this->redirectWithError('/webbanhang/Product', 'Invalid request method');
         }
+
+        require_once __DIR__ . '/../views/product/add.php';
+
     }
 
     public function edit($id) {
-        try {
-            $product = $this->productModel->getProductById($id);
-            if ($product) {
-                $categories = $this->categoryModel->getCategories();
-                include 'app/views/product/edit.php';
+        if (!SessionHelper::isAdmin()) {
+            SessionHelper::setFlash('error_message', 'Bạn không có quyền truy cập');
+            header('Location: /webbanhang/');
+            exit();
+        }
+
+        $product = $this->productModel->getProductById($id);
+        if (!$product) {
+            SessionHelper::setFlash('error_message', 'Sản phẩm không tồn tại');
+            header('Location: /webbanhang/product');
+            exit();
+        }
+
+        $categories = $this->categoryModel->getCategories();
+
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            $data = [
+                'name' => $_POST['name'] ?? '',
+                'description' => $_POST['description'] ?? '',
+                'price' => $_POST['price'] ?? 0,
+                'category_id' => $_POST['category_id'] ?? null,
+                'image' => $this->handleImageUpload() ?? $product->image
+            ];
+
+            $result = $this->productModel->updateProduct($id, $data);
+
+            if ($result) {
+                SessionHelper::setFlash('success_message', 'Cập nhật sản phẩm thành công');
+                header('Location: /webbanhang/product');
+                exit();
             } else {
-                $this->redirectWithError('/webbanhang/Product', 'Product not found');
+                SessionHelper::setFlash('error_message', 'Cập nhật sản phẩm không thành công');
             }
-        } catch(Exception $e) {
-            $this->handleError("Error loading edit form: " . $e->getMessage());
         }
-    }
 
-    public function update() {
-        if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-            try {
-                $id = $_POST['id'] ?? null;
-                $name = $_POST['name'] ?? '';
-                $description = $_POST['description'] ?? '';
-                $price = $_POST['price'] ?? '';
-                $category_id = $_POST['category_id'] ?? null;
-                $existing_image = $_POST['existing_image'] ?? null;
-                
-                $image = $this->handleImageUpload();
-                if (!$image && $existing_image) {
-                    $image = $existing_image;
-                }
+        require_once __DIR__ . '/../views/product/edit.php';
 
-                $result = $this->productModel->updateProduct($id, $name, $description, $price, $category_id, $image);
-
-                if ($result) {
-                    $this->redirectWithSuccess('/webbanhang/Product', 'Product updated successfully');
-                } else {
-                    $this->redirectWithError('/webbanhang/Product/edit/' . $id, 'Failed to update product');
-                }
-            } catch(Exception $e) {
-                $this->redirectWithError('/webbanhang/Product/edit/' . $id, 'Error: ' . $e->getMessage());
-            }
-        } else {
-            $this->redirectWithError('/webbanhang/Product', 'Invalid request method');
-        }
     }
 
     public function delete($id) {
-        try {
-            $result = $this->productModel->deleteProduct($id);
-            if ($result) {
-                $this->redirectWithSuccess('/webbanhang/Product', 'Product deleted successfully');
-            } else {
-                $this->redirectWithError('/webbanhang/Product', 'Failed to delete product');
-            }
-        } catch(Exception $e) {
-            $this->redirectWithError('/webbanhang/Product', 'Error deleting product: ' . $e->getMessage());
+        if (!SessionHelper::isAdmin()) {
+            SessionHelper::setFlash('error_message', 'Bạn không có quyền truy cập');
+            header('Location: /webbanhang/');
+            exit();
         }
+
+        $result = $this->productModel->deleteProduct($id);
+        if ($result) {
+            SessionHelper::setFlash('success_message', 'Xóa sản phẩm thành công');
+        } else {
+            SessionHelper::setFlash('error_message', 'Xóa sản phẩm không thành công');
+        }
+        header('Location: /webbanhang/product');
+        exit();
     }
 
     private function handleImageUpload() {
-        if (isset($_FILES['image']) && $_FILES['image']['error'] == UPLOAD_ERR_OK) {
-            $target_dir = "uploads/";
-            if (!is_dir($target_dir)) {
-                mkdir($target_dir, 0755, true);
+        if (isset($_FILES['image']) && $_FILES['image']['error'] === UPLOAD_ERR_OK) {
+            $targetDir = __DIR__ . '/../../public/uploads/';
+            if (!is_dir($targetDir)) {
+                mkdir($targetDir, 0755, true);
             }
 
-            $file_name = uniqid() . '_' . basename($_FILES["image"]["name"]);
-            $target_file = $target_dir . $file_name;
-            $imageFileType = strtolower(pathinfo($target_file, PATHINFO_EXTENSION));
+            $fileName = uniqid() . '_' . basename($_FILES['image']['name']);
+            $targetFile = $targetDir . $fileName;
 
-            // Check if image file is a actual image
-            $check = getimagesize($_FILES["image"]["tmp_name"]);
-            if ($check === false) {
-                throw new Exception("File is not an image");
+            // Kiểm tra loại file
+            $imageFileType = strtolower(pathinfo($targetFile, PATHINFO_EXTENSION));
+            $allowedTypes = ['jpg', 'jpeg', 'png', 'gif'];
+            if (!in_array($imageFileType, $allowedTypes)) {
+                SessionHelper::setFlash('error_message', 'Chỉ chấp nhận file ảnh JPG, JPEG, PNG hoặc GIF');
+                return null;
             }
 
-            // Check file size (max 10MB)
-            if ($_FILES["image"]["size"] > 10 * 1024 * 1024) {
-                throw new Exception("Image is too large (max 10MB)");
+            // Kiểm tra kích thước file (tối đa 5MB)
+            if ($_FILES['image']['size'] > 5000000) {
+                SessionHelper::setFlash('error_message', 'File ảnh quá lớn (tối đa 5MB)');
+                return null;
             }
 
-            // Allow certain file formats
-            $allowed_types = ['jpg', 'png', 'jpeg', 'gif'];
-            if (!in_array($imageFileType, $allowed_types)) {
-                throw new Exception("Only JPG, JPEG, PNG & GIF files are allowed");
-            }
-
-            if (move_uploaded_file($_FILES["image"]["tmp_name"], $target_file)) {
-                return $target_file;
-            } else {
-                throw new Exception("Error uploading image");
+            if (move_uploaded_file($_FILES['image']['tmp_name'], $targetFile)) {
+                return 'uploads/' . $fileName;
             }
         }
         return null;
-    }
-
-    private function redirectWithError($url, $message) {
-        $_SESSION['error_message'] = $message;
-        header("Location: $url");
-        exit();
-    }
-
-    private function redirectWithSuccess($url, $message) {
-        $_SESSION['success_message'] = $message;
-        header("Location: $url");
-        exit();
-    }
-
-    private function handleError($message) {
-        error_log($message);
-        $this->redirectWithError('/webbanhang/Product', 'An error occurred. Please try again later.');
     }
 }

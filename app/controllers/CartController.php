@@ -1,22 +1,24 @@
 <?php
-require_once('app/config/database.php');
-require_once('app/models/ProductModel.php');
-require_once('app/helpers/SessionHelper.php');
+require_once __DIR__ . '/../models/ProductModel.php';
+require_once __DIR__ . '/../models/OrderModel.php';
+require_once __DIR__ . '/../helpers/SessionHelper.php';
 
 class CartController {
     private $productModel;
-    private $db;
+    private $orderModel;
 
     public function __construct() {
-        $this->db = (new Database())->getConnection();
-        $this->productModel = new ProductModel($this->db);
+        $db = (new Database())->getConnection();
+        $this->productModel = new ProductModel($db);
+        $this->orderModel = new OrderModel($db);
         SessionHelper::startSession();
     }
 
-    // Xem giỏ hàng
     public function index() {
         if (!SessionHelper::isLoggedIn()) {
-            $this->redirectWithError('/webbanhang/Account/login', 'Vui lòng đăng nhập để xem giỏ hàng');
+            SessionHelper::setFlash('error_message', 'Vui lòng đăng nhập để xem giỏ hàng');
+            header('Location: /webbanhang/account/login');
+            exit();
         }
 
         $cart = $_SESSION['cart'] ?? [];
@@ -33,18 +35,21 @@ class CartController {
             }
         }
 
-        include 'app/views/cart/index.php';
+        require_once __DIR__ . '/../views/cart/index.php';
     }
 
-    // Thêm sản phẩm vào giỏ hàng
     public function add($product_id) {
         if (!SessionHelper::isLoggedIn()) {
-            $this->redirectWithError('/webbanhang/Account/login', 'Vui lòng đăng nhập để thêm sản phẩm vào giỏ hàng');
+            SessionHelper::setFlash('error_message', 'Vui lòng đăng nhập để thêm sản phẩm');
+            header('Location: /webbanhang/account/login');
+            exit();
         }
 
         $product = $this->productModel->getProductById($product_id);
         if (!$product) {
-            $this->redirectWithError('/webbanhang/Product', 'Sản phẩm không tồn tại');
+            SessionHelper::setFlash('error_message', 'Sản phẩm không tồn tại');
+            header('Location: /webbanhang/product');
+            exit();
         }
 
         if (!isset($_SESSION['cart'])) {
@@ -60,19 +65,22 @@ class CartController {
             ];
         }
 
-        $this->redirectWithSuccess('/webbanhang/Cart', 'Đã thêm sản phẩm vào giỏ hàng');
+        SessionHelper::setFlash('success_message', 'Đã thêm sản phẩm vào giỏ hàng');
+        header('Location: /webbanhang/cart');
+        exit();
     }
 
-    // Cập nhật số lượng sản phẩm
     public function update() {
         if (!SessionHelper::isLoggedIn()) {
-            $this->redirectWithError('/webbanhang/Account/login', 'Vui lòng đăng nhập để cập nhật giỏ hàng');
+            SessionHelper::setFlash('error_message', 'Vui lòng đăng nhập');
+            header('Location: /webbanhang/account/login');
+            exit();
         }
 
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             foreach ($_POST['quantity'] as $product_id => $quantity) {
+                $quantity = (int)$quantity;
                 if (isset($_SESSION['cart'][$product_id])) {
-                    $quantity = (int)$quantity;
                     if ($quantity > 0) {
                         $_SESSION['cart'][$product_id]['quantity'] = $quantity;
                     } else {
@@ -80,41 +88,64 @@ class CartController {
                     }
                 }
             }
-            $this->redirectWithSuccess('/webbanhang/Cart', 'Cập nhật giỏ hàng thành công');
+            SessionHelper::setFlash('success_message', 'Cập nhật giỏ hàng thành công');
         }
+        header('Location: /webbanhang/cart');
+        exit();
     }
 
-    // Xóa sản phẩm khỏi giỏ hàng
     public function remove($product_id) {
         if (!SessionHelper::isLoggedIn()) {
-            $this->redirectWithError('/webbanhang/Account/login', 'Vui lòng đăng nhập để thao tác với giỏ hàng');
+            SessionHelper::setFlash('error_message', 'Vui lòng đăng nhập');
+            header('Location: /webbanhang/account/login');
+            exit();
         }
 
         if (isset($_SESSION['cart'][$product_id])) {
             unset($_SESSION['cart'][$product_id]);
-            $this->redirectWithSuccess('/webbanhang/Cart', 'Đã xóa sản phẩm khỏi giỏ hàng');
+            SessionHelper::setFlash('success_message', 'Đã xóa sản phẩm khỏi giỏ hàng');
         } else {
-            $this->redirectWithError('/webbanhang/Cart', 'Sản phẩm không có trong giỏ hàng');
+            SessionHelper::setFlash('error_message', 'Sản phẩm không có trong giỏ hàng');
         }
+        header('Location: /webbanhang/cart');
+        exit();
     }
 
-    // Thanh toán
     public function checkout() {
         if (!SessionHelper::isLoggedIn()) {
-            $this->redirectWithError('/webbanhang/Account/login', 'Vui lòng đăng nhập để thanh toán');
+            SessionHelper::setFlash('error_message', 'Vui lòng đăng nhập');
+            header('Location: /webbanhang/account/login');
+            exit();
         }
 
         if (empty($_SESSION['cart'])) {
-            $this->redirectWithError('/webbanhang/Cart', 'Giỏ hàng trống, không thể thanh toán');
+            SessionHelper::setFlash('error_message', 'Giỏ hàng trống');
+            header('Location: /webbanhang/cart');
+            exit();
         }
 
-        include 'app/views/cart/checkout.php';
+        $cart = $_SESSION['cart'];
+        $products = [];
+        $total = 0;
+
+        foreach ($cart as $product_id => $item) {
+            $product = $this->productModel->getProductById($product_id);
+            if ($product) {
+                $product->quantity = $item['quantity'];
+                $product->subtotal = $product->price * $item['quantity'];
+                $products[] = $product;
+                $total += $product->subtotal;
+            }
+        }
+
+        require_once __DIR__ . '/../views/cart/checkout.php';
     }
 
-    // Xử lý thanh toán
     public function processCheckout() {
         if (!SessionHelper::isLoggedIn()) {
-            $this->redirectWithError('/webbanhang/Account/login', 'Vui lòng đăng nhập để thanh toán');
+            SessionHelper::setFlash('error_message', 'Vui lòng đăng nhập');
+            header('Location: /webbanhang/account/login');
+            exit();
         }
 
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -122,8 +153,9 @@ class CartController {
             $phone = $_POST['phone'] ?? '';
             $address = $_POST['address'] ?? '';
             $payment_method = $_POST['payment_method'] ?? 'cod';
+            $notes = $_POST['notes'] ?? '';
 
-            // Validate input
+            // Validate
             $errors = [];
             if (empty($name)) $errors['name'] = 'Vui lòng nhập họ tên';
             if (empty($phone)) $errors['phone'] = 'Vui lòng nhập số điện thoại';
@@ -132,78 +164,57 @@ class CartController {
             if (!empty($errors)) {
                 $_SESSION['checkout_errors'] = $errors;
                 $_SESSION['old_checkout_input'] = $_POST;
-                $this->redirectWithError('/webbanhang/Cart/checkout', 'Vui lòng kiểm tra lại thông tin');
+                header('Location: /webbanhang/cart/checkout');
+                exit();
             }
 
-            // Lưu đơn hàng vào database
-            try {
-                $this->db->beginTransaction();
-
-                // Lưu thông tin đơn hàng
-                $query = "INSERT INTO orders (account_id, name, phone, address, payment_method, total) 
-                          VALUES (:account_id, :name, :phone, :address, :payment_method, :total)";
-                $stmt = $this->db->prepare($query);
-
-                $total = 0;
-                foreach ($_SESSION['cart'] as $product_id => $item) {
-                    $product = $this->productModel->getProductById($product_id);
+            // Tính tổng tiền
+            $cart = $_SESSION['cart'];
+            $total = 0;
+            $items = [];
+            foreach ($cart as $product_id => $item) {
+                $product = $this->productModel->getProductById($product_id);
+                if ($product) {
                     $total += $product->price * $item['quantity'];
+                    $items[] = [
+                        'product_id' => $product_id,
+                        'quantity' => $item['quantity'],
+                        'price' => $product->price
+                    ];
                 }
+            }
 
-                $stmt->bindParam(':account_id', SessionHelper::getUserId(), PDO::PARAM_INT);
-                $stmt->bindParam(':name', $name, PDO::PARAM_STR);
-                $stmt->bindParam(':phone', $phone, PDO::PARAM_STR);
-                $stmt->bindParam(':address', $address, PDO::PARAM_STR);
-                $stmt->bindParam(':payment_method', $payment_method, PDO::PARAM_STR);
-                $stmt->bindParam(':total', $total, PDO::PARAM_STR);
-                $stmt->execute();
-
-                $order_id = $this->db->lastInsertId();
-
-                // Lưu chi tiết đơn hàng
-                foreach ($_SESSION['cart'] as $product_id => $item) {
-                    $product = $this->productModel->getProductById($product_id);
-                    
-                    $query = "INSERT INTO order_details (order_id, product_id, quantity, price) 
-                              VALUES (:order_id, :product_id, :quantity, :price)";
-                    $stmt = $this->db->prepare($query);
-                    
-                    $stmt->bindParam(':order_id', $order_id, PDO::PARAM_INT);
-                    $stmt->bindParam(':product_id', $product_id, PDO::PARAM_INT);
-                    $stmt->bindParam(':quantity', $item['quantity'], PDO::PARAM_INT);
-                    $stmt->bindParam(':price', $product->price, PDO::PARAM_STR);
-                    $stmt->execute();
-                }
-
-                $this->db->commit();
+            // Tạo đơn hàng
+            try {
+                $order_id = $this->orderModel->createOrder(
+                    SessionHelper::getUserId(),
+                    $name,
+                    $phone,
+                    $address,
+                    $payment_method,
+                    $total,
+                    $items
+                );
 
                 // Xóa giỏ hàng
                 unset($_SESSION['cart']);
 
-                // Chuyển hướng đến trang cảm ơn
-                $this->redirectWithSuccess('/webbanhang/Cart/thankyou', 'Đặt hàng thành công. Cảm ơn bạn!');
-            } catch(Exception $e) {
-                $this->db->rollBack();
-                error_log("Checkout error: " . $e->getMessage());
-                $this->redirectWithError('/webbanhang/Cart/checkout', 'Có lỗi xảy ra khi đặt hàng. Vui lòng thử lại');
+                SessionHelper::setFlash('success_message', 'Đặt hàng thành công. Mã đơn hàng: #' . $order_id);
+                header('Location: /webbanhang/cart/thankyou');
+                exit();
+            } catch (Exception $e) {
+                error_log('Checkout error: ' . $e->getMessage());
+                SessionHelper::setFlash('error_message', 'Có lỗi xảy ra khi đặt hàng. Vui lòng thử lại');
+                header('Location: /webbanhang/cart/checkout');
+                exit();
             }
         }
+
+        header('Location: /webbanhang/cart');
+        exit();
     }
 
-    // Trang cảm ơn sau khi đặt hàng
     public function thankyou() {
-        include 'app/views/cart/thankyou.php';
-    }
-
-    private function redirectWithError($url, $message) {
-        $_SESSION['error_message'] = $message;
-        header("Location: $url");
-        exit();
-    }
-
-    private function redirectWithSuccess($url, $message) {
-        $_SESSION['success_message'] = $message;
-        header("Location: $url");
-        exit();
+        require_once __DIR__ . '/../views/cart/thankyou.php';
     }
 }

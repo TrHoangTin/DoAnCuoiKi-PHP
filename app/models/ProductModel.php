@@ -1,101 +1,151 @@
 <?php
 class ProductModel {
     private $conn;
-    private $table_name = "product";
+    private $table = 'product';
 
     public function __construct($db) {
         $this->conn = $db;
     }
 
     public function getProducts() {
-        try {
-            $query = "SELECT p.id, p.name, p.description, p.price, p.image, c.name as category_name 
-                      FROM ". $this->table_name . " p
-                      LEFT JOIN category c ON p.category_id = c.id";
-            $stmt = $this->conn->prepare($query);
-            $stmt->execute();
-            return $stmt->fetchAll(PDO::FETCH_OBJ);
-        } catch(PDOException $e) {
-            error_log("Error getting products: " . $e->getMessage());
-            return [];
-        }
+        $query = "SELECT p.*, c.name as category_name 
+                  FROM {$this->table} p
+                  LEFT JOIN category c ON p.category_id = c.id
+                  ORDER BY p.created_at DESC";
+        $stmt = $this->conn->prepare($query);
+        $stmt->execute();
+        return $stmt->fetchAll();
     }
 
     public function getProductById($id) {
-        try {
-            $query = "SELECT * FROM ". $this->table_name . " WHERE id = :id";
-            $stmt = $this->conn->prepare($query);
-            $stmt->bindParam(':id', $id, PDO::PARAM_INT);
-            $stmt->execute();
-            return $stmt->fetch(PDO::FETCH_OBJ);
-        } catch(PDOException $e) {
-            error_log("Error getting product by ID: " . $e->getMessage());
-            return false;
-        }
+        $query = "SELECT p.*, c.name as category_name 
+                  FROM {$this->table} p
+                  LEFT JOIN category c ON p.category_id = c.id
+                  WHERE p.id = ? LIMIT 1";
+        $stmt = $this->conn->prepare($query);
+        $stmt->execute([$id]);
+        return $stmt->fetch();
     }
 
-    public function addProduct($name, $description, $price, $category_id, $image = null) {
-        $errors = [];
-        if (empty($name)) $errors['name'] = 'Product name cannot be empty';
-        if (empty($description)) $errors['description'] = 'Description cannot be empty';
-        if (!is_numeric($price) || $price < 0) $errors['price'] = 'Invalid price';
-        
-        if (!empty($errors)) return $errors;
-
-        try {
-            $query = "INSERT INTO ". $this->table_name . " 
-                     (name, description, price, category_id, image) 
-                     VALUES (:name, :description, :price, :category_id, :image)";
-            $stmt = $this->conn->prepare($query);
-
-            $stmt->bindParam(':name', htmlspecialchars(strip_tags($name)), PDO::PARAM_STR);
-            $stmt->bindParam(':description', htmlspecialchars(strip_tags($description)), PDO::PARAM_STR);
-            $stmt->bindParam(':price', htmlspecialchars(strip_tags($price)), PDO::PARAM_STR);
-            $stmt->bindParam(':category_id', htmlspecialchars(strip_tags($category_id)), PDO::PARAM_INT);
-            $stmt->bindParam(':image', htmlspecialchars(strip_tags($image)), PDO::PARAM_STR);
-
-            if ($stmt->execute()) {
-                return $this->conn->lastInsertId();
-            }
-            return false;
-        } catch(PDOException $e) {
-            error_log("Error adding product: " . $e->getMessage());
-            return false;
-        }
+    public function getFeaturedProducts($limit = 8) {
+        $query = "SELECT p.*, c.name as category_name 
+                  FROM {$this->table} p
+                  LEFT JOIN category c ON p.category_id = c.id
+                  WHERE p.price > 5000000  -- Sản phẩm có giá > 5 triệu coi là nổi bật
+                  ORDER BY RAND() 
+                  LIMIT ?";
+        $stmt = $this->conn->prepare($query);
+        $stmt->execute([$limit]);
+        return $stmt->fetchAll();
     }
 
-    public function updateProduct($id, $name, $description, $price, $category_id, $image = null) {
-        try {
-            $query = "UPDATE ". $this->table_name . " 
-                     SET name = :name, description = :description, 
-                         price = :price, category_id = :category_id, 
-                         image = COALESCE(:image, image)
-                     WHERE id = :id";
-            $stmt = $this->conn->prepare($query);
+    public function getNewProducts($limit = 6) {
+        $query = "SELECT p.*, c.name as category_name 
+                  FROM {$this->table} p
+                  LEFT JOIN category c ON p.category_id = c.id
+                  ORDER BY p.created_at DESC 
+                  LIMIT ?";
+        $stmt = $this->conn->prepare($query);
+        $stmt->execute([$limit]);
+        return $stmt->fetchAll();
+    }
 
-            $stmt->bindParam(':id', $id, PDO::PARAM_INT);
-            $stmt->bindParam(':name', htmlspecialchars(strip_tags($name)), PDO::PARAM_STR);
-            $stmt->bindParam(':description', htmlspecialchars(strip_tags($description)), PDO::PARAM_STR);
-            $stmt->bindParam(':price', htmlspecialchars(strip_tags($price)), PDO::PARAM_STR);
-            $stmt->bindParam(':category_id', htmlspecialchars(strip_tags($category_id)), PDO::PARAM_INT);
-            $stmt->bindParam(':image', $image, PDO::PARAM_STR);
+    public function getProductsByCategory($category_id) {
+        $query = "SELECT p.*, c.name as category_name 
+                  FROM {$this->table} p
+                  LEFT JOIN category c ON p.category_id = c.id
+                  WHERE p.category_id = ?
+                  ORDER BY p.created_at DESC";
+        $stmt = $this->conn->prepare($query);
+        $stmt->execute([$category_id]);
+        return $stmt->fetchAll();
+    }
 
-            return $stmt->execute();
-        } catch(PDOException $e) {
-            error_log("Error updating product: " . $e->getMessage());
-            return false;
-        }
+    public function addProduct($data) {
+        $query = "INSERT INTO {$this->table} 
+                 (name, description, price, image, category_id) 
+                 VALUES (?, ?, ?, ?, ?)";
+        $stmt = $this->conn->prepare($query);
+        return $stmt->execute([
+            $data['name'],
+            $data['description'],
+            $data['price'],
+            $data['image'],
+            $data['category_id']
+        ]);
+    }
+
+    public function updateProduct($id, $data) {
+        $query = "UPDATE {$this->table} 
+                 SET name = ?, description = ?, price = ?, 
+                     image = ?, category_id = ?, updated_at = NOW()
+                 WHERE id = ?";
+        $stmt = $this->conn->prepare($query);
+        return $stmt->execute([
+            $data['name'],
+            $data['description'],
+            $data['price'],
+            $data['image'],
+            $data['category_id'],
+            $id
+        ]);
     }
 
     public function deleteProduct($id) {
-        try {
-            $query = "DELETE FROM ". $this->table_name . " WHERE id = :id";
-            $stmt = $this->conn->prepare($query);
-            $stmt->bindParam(':id', $id, PDO::PARAM_INT);
-            return $stmt->execute();
-        } catch(PDOException $e) {
-            error_log("Error deleting product: " . $e->getMessage());
-            return false;
-        }
+        $query = "DELETE FROM {$this->table} WHERE id = ?";
+        $stmt = $this->conn->prepare($query);
+        return $stmt->execute([$id]);
     }
+
+    public function searchProducts($keyword) {
+        $query = "SELECT p.*, c.name as category_name 
+                  FROM {$this->table} p
+                  LEFT JOIN category c ON p.category_id = c.id
+                  WHERE p.name LIKE ? OR p.description LIKE ?
+                  ORDER BY p.created_at DESC";
+        $stmt = $this->conn->prepare($query);
+        $searchTerm = "%{$keyword}%";
+        $stmt->execute([$searchTerm, $searchTerm]);
+        return $stmt->fetchAll();
+    }
+    // Thêm vào ProductModel.php
+public function getPaginatedProducts($page = 1, $limit = 10, $category_id = null, $search = null) {
+    $offset = ($page - 1) * $limit;
+    
+    $query = "SELECT SQL_CALC_FOUND_ROWS p.*, c.name as category_name 
+              FROM {$this->table} p
+              LEFT JOIN category c ON p.category_id = c.id
+              WHERE 1=1";
+    
+    $params = [];
+    
+    if ($category_id) {
+        $query .= " AND p.category_id = ?";
+        $params[] = $category_id;
+    }
+    
+    if ($search) {
+        $query .= " AND (p.name LIKE ? OR p.description LIKE ?)";
+        $params[] = "%{$search}%";
+        $params[] = "%{$search}%";
+    }
+    
+    $query .= " LIMIT ? OFFSET ?";
+    $params[] = $limit;
+    $params[] = $offset;
+    
+    $stmt = $this->conn->prepare($query);
+    $stmt->execute($params);
+    $products = $stmt->fetchAll();
+    
+    // Get total count
+    $stmt = $this->conn->prepare("SELECT FOUND_ROWS() as total");
+    $stmt->execute();
+    $total = $stmt->fetch()->total;
+    
+    return [
+        'products' => $products,
+        'total' => $total
+    ];
+}
 }

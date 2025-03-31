@@ -1,4 +1,4 @@
-<?php include 'app/views/shares/header.php'; ?>
+<?php include(__DIR__ . '/../../views/shares/header.php'); ?>
 
 <div class="container mt-5">
     <div class="row justify-content-center">
@@ -29,4 +29,4 @@
     </div>
 </div>
 
-<?php include 'app/views/shares/footer.php'; ?>
+<?php include(__DIR__ . '/../../views/shares/footer.php'); ?>

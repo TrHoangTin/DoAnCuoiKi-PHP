@@ -1,4 +1,4 @@
-<?php include 'app/views/shares/header.php'; ?>
+<?php include(__DIR__ . '/../../views/shares/header.php'); ?>
 
 <div class="container mt-4">
     <h1 class="mb-4">Giỏ Hàng</h1>
@@ -88,4 +88,4 @@
     <?php endif; ?>
 </div>
 
-<?php include 'app/views/shares/footer.php'; ?>
+<?php include(__DIR__ . '/../../views/shares/footer.php'); ?>
